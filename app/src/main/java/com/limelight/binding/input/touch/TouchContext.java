@@ -8,4 +8,11 @@ public interface TouchContext {
     void touchUpEvent(int eventX, int eventY, long eventTime);
     void cancelTouch();
     boolean isCancelled();
+
+    /**
+     * When suppressed, the context may keep tracking the gesture but must not
+     * emit any input to the server. Used while a two-finger gesture is still
+     * being classified as scroll vs pinch.
+     */
+    default void setOutputSuppressed(boolean suppressed) {}
 }

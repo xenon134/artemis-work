@@ -317,8 +317,8 @@ public class GameMenu implements Game.GameMenuCallbacks {
         options.add(new MenuOption(getString(R.string.game_menu_toggle_keyboard), true,
                 game::toggleKeyboard));
 
-        options.add(new MenuOption(getString(game.isZoomModeEnabled() ? R.string.game_menu_disable_zoom_mode : R.string.game_menu_enable_zoom_mode), true,
-                game::toggleZoomMode));
+        options.add(new MenuOption(getString(game.isInputDisabled() ? R.string.game_menu_enable_input : R.string.game_menu_disable_input), true,
+                game::toggleInputDisabled));
 
         if (dialogScreenContext == game) {
             options.add(new MenuOption(getString(R.string.game_menu_rotate_screen), true,

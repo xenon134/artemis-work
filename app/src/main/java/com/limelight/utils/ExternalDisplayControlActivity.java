@@ -403,11 +403,13 @@ public class ExternalDisplayControlActivity extends AppCompatActivity implements
         LinearLayout topLeftButtons = createButtonContainer(Gravity.TOP | Gravity.START);
         topLeftButtons.setFocusable(false);
 //        topLeftButtons.addView(createImageButton(R.drawable.ic_focus_secondary, v -> requestFocusToGameActivity(false)));
-        zoomButton = createImageButton(R.drawable.ic_zoom_toggle, v -> toggleZoomMode(true));
-        if (Game.instance != null && Game.instance.isZoomModeEnabled()) {
+        zoomButton = createImageButton(R.drawable.ic_zoom_toggle, v -> toggleInputDisabled(true));
+        if (Game.instance != null && Game.instance.isInputDisabled()) {
             zoomButton.setAlpha(1.0f);
+            zoomButton.setContentDescription(getString(R.string.game_menu_enable_input));
         } else {
             zoomButton.setAlpha(0.5f);
+            zoomButton.setContentDescription(getString(R.string.game_menu_disable_input));
         }
         topLeftButtons.addView(zoomButton);
         rootLayout.addView(topLeftButtons);
@@ -469,15 +471,17 @@ public class ExternalDisplayControlActivity extends AppCompatActivity implements
         keyBoardLayoutController.toggleVisibility();
     }
 
-    public void toggleZoomMode(boolean callGame) {
+    public void toggleInputDisabled(boolean callGame) {
         if (Game.instance != null) {
             if (callGame) {
-                Game.instance.toggleZoomMode();
+                Game.instance.toggleInputDisabled();
             } else {
-                if (Game.instance.isZoomModeEnabled()) {
+                if (Game.instance.isInputDisabled()) {
                     zoomButton.setAlpha(1.0f);
+                    zoomButton.setContentDescription(getString(R.string.game_menu_enable_input));
                 } else {
                     zoomButton.setAlpha(0.5f);
+                    zoomButton.setContentDescription(getString(R.string.game_menu_disable_input));
                 }
             }
         }

@@ -18,6 +18,7 @@ public class RelativeTouchContext implements TouchContext {
     private boolean confirmedMove;
     private boolean confirmedDrag;
     private boolean confirmedScroll;
+    private boolean outputSuppressed;
     private double distanceMoved;
     private double xFactor, yFactor;
     private int pointerCount;
@@ -35,7 +36,7 @@ public class RelativeTouchContext implements TouchContext {
         @Override
         public void run() {
             // Check if someone already set move
-            if (confirmedMove) {
+            if (confirmedMove || outputSuppressed) {
                 return;
             }
 
@@ -249,6 +250,12 @@ public class RelativeTouchContext implements TouchContext {
             checkForConfirmedMove(eventX, eventY);
             checkForConfirmedScroll();
 
+            if (outputSuppressed) {
+                lastTouchX = eventX;
+                lastTouchY = eventY;
+                return true;
+            }
+
             // We only send moves and drags for the primary touch point
             if (actionIndex == 0) {
                 int deltaX = eventX - lastTouchX;
@@ -312,6 +319,16 @@ public class RelativeTouchContext implements TouchContext {
         // If it was a confirmed drag, we'll need to raise the button now
         if (confirmedDrag) {
             conn.sendMouseButtonUp(getMouseButtonIndex());
+            confirmedDrag = false;
+        }
+        confirmedScroll = false;
+    }
+
+    @Override
+    public void setOutputSuppressed(boolean suppressed) {
+        outputSuppressed = suppressed;
+        if (suppressed) {
+            cancelDragTimer();
         }
     }
 

@@ -112,7 +112,7 @@
         android:src="@drawable/ic_zoom_toggle"
         android:padding="6dp"
         android:scaleType="fitCenter"
-        android:contentDescription="@string/toggle_pan_zoom_mode"
+        android:contentDescription="@string/toggle_input"
         android:visibility="gone"
         android:elevation="9999dp" />
 

@@ -21,6 +21,7 @@ import com.limelight.binding.input.driver.UsbDriverService;
 import com.limelight.binding.input.evdev.EvdevListener;
 import com.limelight.binding.input.touch.TouchContext;
 import com.limelight.binding.input.touch.TrackpadContext;
+import com.limelight.binding.input.touch.TrackpadGestureArbiter;
 import com.limelight.binding.input.virtual_controller.VirtualController;
 import com.limelight.binding.input.virtual_controller.keyboard.KeyBoardController;
 import com.limelight.binding.input.virtual_controller.keyboard.KeyBoardLayoutController;
@@ -201,7 +202,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private int modifierFlags = 0;
     private boolean grabbedInput = true;
     private boolean cursorVisible = false;
-    private boolean isPanZoomMode = false;
+    private boolean inputDisabled = false;
+    private final TrackpadGestureArbiter trackpadGestureArbiter = new TrackpadGestureArbiter();
+    private boolean trackpadPinchActive = false;
+    private boolean trackpadPinchSuppressUntilUp = false;
     private boolean synthClickPending = false;
     private boolean pointerSwiping = false;
     private boolean waitingForAllModifiersUp = false;
@@ -941,7 +945,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 overlayToggleButton.setVisibility(View.VISIBLE);
 
                 // Set initial appearance based on current state
-                updateZoomButtonAppearance();
+                updateInputToggleButtonAppearance();
 
                 // Touch listener for drag and click
                 overlayToggleButton.setOnTouchListener((view, event) -> {
@@ -982,9 +986,9 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                             return true;
                         case MotionEvent.ACTION_UP:
                             if (!isZoomButtonMoving) {
-                                // It's a click event, toggle zoom mode
-                                toggleZoomMode();
-                                updateZoomButtonAppearance();
+                                // It's a click event, toggle remote input
+                                toggleInputDisabled();
+                                updateInputToggleButtonAppearance();
                             }
                             isZoomButtonMoving = false;
                             return true;
@@ -998,11 +1002,13 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         }
     }
 
-    private void updateZoomButtonAppearance() {
+    private void updateInputToggleButtonAppearance() {
         if (overlayToggleButton != null) {
-            // Change background based on pan/zoom mode state
-            overlayToggleButton.setBackgroundResource(isPanZoomMode ?
+            // Change background based on whether remote input is disabled
+            overlayToggleButton.setBackgroundResource(inputDisabled ?
                     R.drawable.floating_menu_button_active : R.drawable.floating_menu_button);
+            overlayToggleButton.setContentDescription(getString(inputDisabled ?
+                    R.string.game_menu_enable_input : R.string.game_menu_disable_input));
             // No need for alpha changes since the color indicates the state
             overlayToggleButton.setAlpha(1.0f);
         }
@@ -3072,9 +3078,15 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                         return true;
                     }
 
-                    if (isPanZoomMode) {
+                    if (inputDisabled) {
                         // panning the streamView
                         panZoomHandler.handleTouchEvent(event);
+                        return true;
+                    }
+
+                    // In trackpad mode, arbitrate two-finger gestures so a
+                    // pinch zooms the viewport instead of scrolling the host.
+                    if (handleTrackpadGesture(event)) {
                         return true;
                     }
 
@@ -3116,6 +3128,119 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         // Unknown class
         return false;
+    }
+
+    private boolean handleTrackpadGesture(MotionEvent event) {
+        if (!prefConfig.touchscreenTrackpad) {
+            return false;
+        }
+
+        final int action = event.getActionMasked();
+        final int pointerCount = event.getPointerCount();
+
+        if (action == MotionEvent.ACTION_DOWN) {
+            resetTrackpadGestureState();
+            return false;
+        }
+
+        // After a pinch starts, ignore the rest of the gesture (including the
+        // remaining finger after one is lifted) so it cannot turn into a tap,
+        // cursor move, or scroll. Keep applying zoom while both fingers move.
+        if (trackpadPinchSuppressUntilUp) {
+            if (action == MotionEvent.ACTION_MOVE && pointerCount >= 2) {
+                float scaleDelta = trackpadGestureArbiter.getScaleDelta(event);
+                if (scaleDelta != 1.0f) {
+                    panZoomHandler.zoomBy(scaleDelta,
+                            trackpadGestureArbiter.getFocusX(event),
+                            trackpadGestureArbiter.getFocusY(event));
+                }
+                return true;
+            }
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                resetTrackpadGestureState();
+            }
+            return true;
+        }
+
+        // Three or more fingers are handled by the existing multi-touch
+        // shortcuts (keyboard, menu, etc.).
+        if (pointerCount > 2) {
+            resetTrackpadGestureState();
+            return false;
+        }
+
+        if (action == MotionEvent.ACTION_POINTER_DOWN && pointerCount == 2) {
+            trackpadGestureArbiter.begin(event);
+            setTouchContextsOutputSuppressed(true);
+            return false;
+        }
+
+        if (action == MotionEvent.ACTION_MOVE && pointerCount == 2 &&
+                trackpadGestureArbiter.isTracking()) {
+            TrackpadGestureArbiter.Mode mode = trackpadGestureArbiter.classify(event);
+
+            if (mode == TrackpadGestureArbiter.Mode.PINCH) {
+                if (!trackpadPinchActive) {
+                    trackpadPinchActive = true;
+                    trackpadPinchSuppressUntilUp = true;
+                    cancelTouchContexts();
+                }
+
+                float scaleDelta = trackpadGestureArbiter.getScaleDelta(event);
+                if (scaleDelta != 1.0f) {
+                    panZoomHandler.zoomBy(scaleDelta,
+                            trackpadGestureArbiter.getFocusX(event),
+                            trackpadGestureArbiter.getFocusY(event));
+                }
+                return true;
+            }
+            else if (mode == TrackpadGestureArbiter.Mode.SCROLL) {
+                // The gesture is now known to be a scroll. Let the trackpad
+                // contexts resume normal scroll output.
+                setTouchContextsOutputSuppressed(false);
+                return false;
+            }
+
+            // Still undecided: let the contexts update their internal
+            // positions without emitting input.
+            return false;
+        }
+
+        if (action == MotionEvent.ACTION_POINTER_UP ||
+                action == MotionEvent.ACTION_UP ||
+                action == MotionEvent.ACTION_CANCEL) {
+            resetTrackpadGestureState();
+        }
+
+        return false;
+    }
+
+    private void resetTrackpadGestureState() {
+        trackpadGestureArbiter.reset();
+        trackpadPinchSuppressUntilUp = false;
+        if (trackpadPinchActive) {
+            trackpadPinchActive = false;
+            updatePipAutoEnter();
+        }
+        setTouchContextsOutputSuppressed(false);
+    }
+
+    private void cancelTouchContexts() {
+        for (TouchContext context : touchContextMap) {
+            if (context != null) {
+                context.cancelTouch();
+                context.setPointerCount(0);
+                context.setOutputSuppressed(false);
+            }
+        }
+    }
+
+    private void setTouchContextsOutputSuppressed(boolean suppressed) {
+        for (TouchContext context : touchContextMap) {
+            if (context != null) {
+                context.setOutputSuppressed(suppressed);
+            }
+        }
     }
 
     private boolean handleTouchInput(MotionEvent event, TouchContext[] inputContextMap, boolean isTouchScreen) {
@@ -3986,20 +4111,25 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         return serverCommands;
     }
 
-    public boolean isZoomModeEnabled() {
-        return isPanZoomMode;
+    public boolean isInputDisabled() {
+        return inputDisabled;
     }
-    public void toggleZoomMode() {
-        this.isPanZoomMode = !this.isPanZoomMode;
-        if (this.isPanZoomMode) {
-            Toast.makeText(this, getString(R.string.pan_zoom_mode_enabled), Toast.LENGTH_SHORT).show();
+    public void toggleInputDisabled() {
+        this.inputDisabled = !this.inputDisabled;
+
+        // Do not leave a drag/click or a half-finished pinch behind.
+        resetTrackpadGestureState();
+        cancelTouchContexts();
+
+        if (this.inputDisabled) {
+            Toast.makeText(this, getString(R.string.input_disabled), Toast.LENGTH_SHORT).show();
         } else {
-            Toast.makeText(this, getString(R.string.pan_zoom_mode_disabled), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.input_enabled), Toast.LENGTH_SHORT).show();
         }
-        updateZoomButtonAppearance();
+        updateInputToggleButtonAppearance();
 
         if (ExternalDisplayControlActivity.instance != null) {
-            ExternalDisplayControlActivity.instance.toggleZoomMode(false);
+            ExternalDisplayControlActivity.instance.toggleInputDisabled(false);
         }
     }
 
@@ -4187,9 +4317,11 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             }
         }
 
-        // Always exit zoom mode if mouse mode has changed
-        isPanZoomMode = false;
-        updateZoomButtonAppearance();
+        // Always re-enable input if the mouse mode has changed
+        inputDisabled = false;
+        resetTrackpadGestureState();
+        cancelTouchContexts();
+        updateInputToggleButtonAppearance();
     }
 
     public void toggleHUD() {

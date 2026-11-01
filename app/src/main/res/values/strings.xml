@@ -374,6 +374,8 @@
     <string name="game_menu_select_steam_mode">Select Stream mode</string>
     <string name="game_menu_enable_zoom_mode">Enable Pan/Zoom</string>
     <string name="game_menu_disable_zoom_mode">Disable Pan/Zoom</string>
+    <string name="game_menu_disable_input">Disable Input</string>
+    <string name="game_menu_enable_input">Enable Input</string>
     <string name="game_menu_rotate_screen">Rotate Screen</string>
     <string name="game_menu_toggle_keyboard_model">Toggle Special keys</string>s
     <string name="game_menu_toggle_virtual_model">Toggle On-screen controller</string>
@@ -404,8 +406,11 @@
     <string name="game_menu_send_keys_ctrl_alt_shift_f12">Ctrl+Alt+Shift+F12 (Switch Monitor)</string>
 
     <string name="toggle_pan_zoom_mode">Toggle Pan/Zoom Mode</string>
+    <string name="toggle_input">Toggle Input</string>
     <string name="pan_zoom_mode_enabled">Pan/Zoom Mode Enabled</string>
     <string name="pan_zoom_mode_disabled">Pan/Zoom Mode Disabled</string>
+    <string name="input_disabled">Input Disabled</string>
+    <string name="input_enabled">Input Enabled</string>
 
     <string name="title_analog_scrolling">Use an analog stick to scroll</string>
     <string name="summary_analog_scrolling">Select an analog stick to scroll when in mouse emulation mode</string>

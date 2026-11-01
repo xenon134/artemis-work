@@ -111,28 +111,8 @@ public class PanZoomHandler {
     private class ScaleListener extends ScaleGestureDetector.SimpleOnScaleGestureListener {
         @Override
         public boolean onScale(ScaleGestureDetector detector) {
-            float newScaleFactor = scaleFactor * detector.getScaleFactor();
-            newScaleFactor = Math.max(1, Math.min(newScaleFactor, MAX_SCALE)); // Apply minimum scale
-
-            // Calculate pivot point
-            float focusX = detector.getFocusX();
-            float focusY = detector.getFocusY();
-
-            float dPivotX = (childX - focusX) / scaleFactor * newScaleFactor;
-            float dPivotY = (childY - focusY) / scaleFactor * newScaleFactor;
-
-            childX = focusX + dPivotX;
-            childY = focusY + dPivotY;
-
-            scaleFactor = newScaleFactor;
-
-            streamView.setScaleX(scaleFactor);
-            streamView.setScaleY(scaleFactor);
-
-            streamView.setX(childX);
-            streamView.setY(childY);
-
-            constrainToBounds();
+            applyScale(scaleFactor * detector.getScaleFactor(),
+                    detector.getFocusX(), detector.getFocusY());
             return true;
         }
 
@@ -140,6 +120,36 @@ public class PanZoomHandler {
         public void onScaleEnd(ScaleGestureDetector detector) {
             game.updatePipAutoEnter();
         }
+    }
+
+    /**
+     * Applies a relative scale change around the given focus point. Used both
+     * by the ScaleGestureDetector path (pan/zoom mode) and by the trackpad
+     * pinch path (input enabled mode).
+     */
+    public void zoomBy(float scaleDelta, float focusX, float focusY) {
+        applyScale(scaleFactor * scaleDelta, focusX, focusY);
+    }
+
+    private void applyScale(float newScaleFactor, float focusX, float focusY) {
+        newScaleFactor = Math.max(1, Math.min(newScaleFactor, MAX_SCALE)); // Apply minimum scale
+
+        // Calculate pivot point
+        float dPivotX = (childX - focusX) / scaleFactor * newScaleFactor;
+        float dPivotY = (childY - focusY) / scaleFactor * newScaleFactor;
+
+        childX = focusX + dPivotX;
+        childY = focusY + dPivotY;
+
+        scaleFactor = newScaleFactor;
+
+        streamView.setScaleX(scaleFactor);
+        streamView.setScaleY(scaleFactor);
+
+        streamView.setX(childX);
+        streamView.setY(childY);
+
+        constrainToBounds();
     }
 
     private class GestureListener extends GestureDetector.SimpleOnGestureListener {
