@@ -44,6 +44,7 @@ import com.limelight.profiles.ProfilesManager;
 import com.limelight.ui.ExternalControllerView;
 import com.limelight.ui.GameGestures;
 import com.limelight.ui.StreamContainer;
+import com.limelight.utils.ClientCursorTracker;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.ExternalDisplayControlActivity;
 import com.limelight.utils.MouseModeOption;
@@ -204,6 +205,15 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private boolean cursorVisible = false;
     private boolean inputDisabled = false;
     private final TrackpadGestureArbiter trackpadGestureArbiter = new TrackpadGestureArbiter();
+    private final ClientCursorTracker clientCursorTracker = new ClientCursorTracker();
+    private volatile boolean cursorAutoPanScheduled = false;
+    private final Runnable cursorAutoPanRunnable = new Runnable() {
+        @Override
+        public void run() {
+            cursorAutoPanScheduled = false;
+            updateCursorAutoPan();
+        }
+    };
     private boolean trackpadPinchActive = false;
     private boolean trackpadPinchSuppressUntilUp = false;
     private boolean synthClickPending = false;
@@ -381,6 +391,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         // Inflate the content
         setContentView(R.layout.activity_game);
 
+        // RVNC uses a 12dp movement threshold before it trusts the
+        // pinch-versus-scroll ratio. Match that here so high-density screens
+        // don't classify on a handful of noisy pixels.
+        trackpadGestureArbiter.setMovementThresholdPx(
+                12.0f * getResources().getDisplayMetrics().density);
+
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
 
         // Start the spinner
@@ -489,6 +505,16 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 streamContainer,
                 prefConfig
         );
+
+        streamContainer.getSurfaceView().addOnLayoutChangeListener(
+                (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                    int width = right - left;
+                    int height = bottom - top;
+                    if (width > 0 && height > 0) {
+                        clientCursorTracker.setBounds(width, height);
+                        scheduleCursorAutoPan();
+                    }
+                });
 
         // Restore previous zoom & pan if enabled and saved
         if (prefConfig.rememberZoomPan) {
@@ -810,6 +836,29 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 new ComputerDetails.AddressTuple(host, port),
                 httpsPort, uniqueId, config,
                 PlatformBinding.getCryptoProvider(this), serverCert);
+        conn.setMouseMovementListener(new NvConnection.MouseMovementListener() {
+            @Override
+            public void onRelativeMouseMove(short deltaX, short deltaY) {
+                clientCursorTracker.onRelativeMove(deltaX, deltaY);
+                scheduleCursorAutoPan();
+            }
+
+            @Override
+            public void onAbsoluteMousePosition(short x, short y,
+                                                short referenceWidth, short referenceHeight) {
+                clientCursorTracker.onAbsolutePosition(x, y,
+                        referenceWidth, referenceHeight);
+                scheduleCursorAutoPan();
+            }
+
+            @Override
+            public void onRelativeMouseMoveAsPosition(short deltaX, short deltaY,
+                                                      short referenceWidth, short referenceHeight) {
+                clientCursorTracker.onRelativeMoveInReference(deltaX, deltaY,
+                        referenceWidth, referenceHeight);
+                scheduleCursorAutoPan();
+            }
+        });
         controllerHandler = new ControllerHandler(this, conn, this, prefConfig);
         keyboardTranslator = new KeyboardTranslator(prefConfig);
 
@@ -3221,8 +3270,27 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         if (trackpadPinchActive) {
             trackpadPinchActive = false;
             updatePipAutoEnter();
+            // The pinch may have left the estimated cursor outside the
+            // viewport. Re-center the view on it once the gesture is over.
+            scheduleCursorAutoPan();
         }
         setTouchContextsOutputSuppressed(false);
+    }
+
+    private void scheduleCursorAutoPan() {
+        if (cursorAutoPanScheduled || streamContainer == null) {
+            return;
+        }
+        cursorAutoPanScheduled = true;
+        streamContainer.post(cursorAutoPanRunnable);
+    }
+
+    private void updateCursorAutoPan() {
+        if (!prefConfig.touchscreenTrackpad || !clientCursorTracker.isInitialized()) {
+            return;
+        }
+        panZoomHandler.ensurePointVisible(
+                clientCursorTracker.getX(), clientCursorTracker.getY());
     }
 
     private void cancelTouchContexts() {

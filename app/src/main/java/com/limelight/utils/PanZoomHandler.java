@@ -12,6 +12,7 @@ import com.limelight.preferences.PreferenceConfiguration;
 
 public class PanZoomHandler {
     static private final float MAX_SCALE = 10.0f;
+    static private final float CURSOR_SAFE_MARGIN_FRACTION = 0.12f;
 
     private final Game game;
     private final View streamView;
@@ -129,6 +130,51 @@ public class PanZoomHandler {
      */
     public void zoomBy(float scaleDelta, float focusX, float focusY) {
         applyScale(scaleFactor * scaleDelta, focusX, focusY);
+    }
+
+    /**
+     * Pans the viewport just enough to keep the given point inside a safe
+     * margin. The point is in stream-view coordinates, matching the values
+     * produced by {@link ClientCursorTracker}.
+     */
+    public void ensurePointVisible(float pointX, float pointY) {
+        if (scaleFactor <= 1.0f) {
+            return;
+        }
+
+        updateDimensions();
+        if (parentWidth <= 0.0f || parentHeight <= 0.0f) {
+            return;
+        }
+
+        float marginX = Math.min(parentWidth * CURSOR_SAFE_MARGIN_FRACTION,
+                parentWidth / 2.0f);
+        float marginY = Math.min(parentHeight * CURSOR_SAFE_MARGIN_FRACTION,
+                parentHeight / 2.0f);
+
+        float screenX = childX + pointX * scaleFactor;
+        float screenY = childY + pointY * scaleFactor;
+
+        float newX = childX;
+        float newY = childY;
+
+        if (screenX < marginX) {
+            newX += marginX - screenX;
+        } else if (screenX > parentWidth - marginX) {
+            newX -= screenX - (parentWidth - marginX);
+        }
+
+        if (screenY < marginY) {
+            newY += marginY - screenY;
+        } else if (screenY > parentHeight - marginY) {
+            newY -= screenY - (parentHeight - marginY);
+        }
+
+        if (newX != childX || newY != childY) {
+            childX = newX;
+            childY = newY;
+            constrainToBounds();
+        }
     }
 
     private void applyScale(float newScaleFactor, float focusX, float focusY) {

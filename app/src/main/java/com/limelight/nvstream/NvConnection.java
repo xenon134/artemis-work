@@ -44,6 +44,12 @@ import com.limelight.nvstream.input.MouseButtonPacket;
 import com.limelight.nvstream.jni.MoonBridge;
 
 public class NvConnection {
+    public interface MouseMovementListener {
+        void onRelativeMouseMove(short deltaX, short deltaY);
+        void onAbsoluteMousePosition(short x, short y, short referenceWidth, short referenceHeight);
+        void onRelativeMouseMoveAsPosition(short deltaX, short deltaY, short referenceWidth, short referenceHeight);
+    }
+
     // Context parameters
     private LimelightCryptoProvider cryptoProvider;
     private String uniqueId;
@@ -51,6 +57,7 @@ public class NvConnection {
     private static Semaphore connectionAllowed = new Semaphore(1);
     private final boolean isMonkey;
     private final Context appContext;
+    private volatile MouseMovementListener mouseMovementListener;
 
     public NvConnection(Context appContext, ComputerDetails.AddressTuple host, int httpsPort, String uniqueId, StreamConfiguration config, LimelightCryptoProvider cryptoProvider, X509Certificate serverCert)
     {
@@ -481,6 +488,10 @@ public class NvConnection {
         }).start();
     }
 
+    public void setMouseMovementListener(MouseMovementListener listener) {
+        this.mouseMovementListener = listener;
+    }
+
     public void sendExecServerCmd(final int cmdId) {
         if (!isMonkey) {
             MoonBridge.sendExecServerCmd(cmdId);
@@ -491,6 +502,11 @@ public class NvConnection {
     {
         if (!isMonkey) {
             MoonBridge.sendMouseMove(deltaX, deltaY);
+
+            MouseMovementListener listener = mouseMovementListener;
+            if (listener != null) {
+                listener.onRelativeMouseMove(deltaX, deltaY);
+            }
         }
     }
 
@@ -498,6 +514,11 @@ public class NvConnection {
     {
         if (!isMonkey) {
             MoonBridge.sendMousePosition(x, y, referenceWidth, referenceHeight);
+
+            MouseMovementListener listener = mouseMovementListener;
+            if (listener != null) {
+                listener.onAbsoluteMousePosition(x, y, referenceWidth, referenceHeight);
+            }
         }
     }
 
@@ -505,6 +526,11 @@ public class NvConnection {
     {
         if (!isMonkey) {
             MoonBridge.sendMouseMoveAsMousePosition(deltaX, deltaY, referenceWidth, referenceHeight);
+
+            MouseMovementListener listener = mouseMovementListener;
+            if (listener != null) {
+                listener.onRelativeMouseMoveAsPosition(deltaX, deltaY, referenceWidth, referenceHeight);
+            }
         }
     }
 
